@@ -1,7 +1,13 @@
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-dotenv.config({ path: '../../.env' }); // Explicitly specify the path to the .env file
+// Resolve __dirname in ES module scope
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') }); // Explicitly specify the path to the .env file
 
 interface Coordinates {
   lat: number;
@@ -14,6 +20,7 @@ interface WeatherData {
   humidity: number;
   description: string;
   windSpeed: number;
+  city?: string;
 }
 
 class Weather {
@@ -21,33 +28,38 @@ class Weather {
   humidity: number;
   description: string;
   windSpeed: number;
+  icon: string;
 
-  constructor(temperature: number, humidity: number, description: string, windSpeed: number) {
+  constructor(temperature: number, humidity: number, description: string, windSpeed: number, icon: string) {
     this.temperature = temperature;
     this.humidity = humidity;
     this.description = description;
     this.windSpeed = windSpeed;
+    this.icon = icon;
   }
 }
 
 class WeatherService {
-  private baseURL: string;
+  private geoBaseURL: string;
+  private weatherBaseURL: string;
   private apiKey: string;
 
   constructor() {
-    this.baseURL = process.env.API_BASE_URL || '';
+    this.geoBaseURL = process.env.GEO_API_BASE_URL || '';
+    this.weatherBaseURL = process.env.WEATHER_API_BASE_URL || '';
     this.apiKey = process.env.API_KEY || '';
-    console.log(`API_BASE_URL: ${this.baseURL}`);
+    console.log(`GEO_API_BASE_URL: ${this.geoBaseURL}`);
+    console.log(`WEATHER_API_BASE_URL: ${this.weatherBaseURL}`);
     console.log(`API_KEY: ${this.apiKey}`);
   }
 
   private async fetchLocationData(query: string): Promise<any> {
-    const url = new URL(`${this.baseURL}/geo/1.0/direct?q=${query}&appid=${this.apiKey}`);
+    const url = new URL(`${this.geoBaseURL}/direct?q=${query}&appid=${this.apiKey}`);
     console.log(`Fetching location data from URL: ${url.toString()}`);
     const response = await fetch(url.toString());
     if (!response.ok) {
       console.error(`Error fetching location data: ${response.statusText}`);
-      throw new Error('Network response was not ok');
+      throw new Error('Network response failed');
     }
     return response.json();
   }
@@ -70,7 +82,7 @@ class WeatherService {
   }
 
   private buildWeatherQuery(coordinates: Coordinates): string {
-    return `${this.baseURL}/forecast?lat=${coordinates.lat}&lon=${coordinates.lon}&appid=${this.apiKey}`;
+    return `${this.weatherBaseURL}/forecast?lat=${coordinates.lat}&lon=${coordinates.lon}&appid=${this.apiKey}&units=metric`;
   }
 
   private async fetchWeatherData(coordinates: Coordinates): Promise<any> {
@@ -79,36 +91,32 @@ class WeatherService {
     const response = await fetch(url);
     if (!response.ok) {
       console.error(`Error fetching weather data: ${response.statusText}`);
-      throw new Error('Network response was not ok');
+      throw new Error('Network response failed');
     }
     const weatherData = await response.json();
     console.log('Weather data:', weatherData);
     return weatherData;
   }
-  // TODO: Build parseCurrentWeather method
-  // private parseCurrentWeather(response: any) {}
+
   private parseCurrentWeather(response: any): Weather {
-    // Parse the weather data as needed
     return new Weather(
       response.main.temp,
       response.main.humidity,
       response.weather[0].description,
-      response.wind.speed
+      response.wind.speed,
+      response.weather[0].icon // Include the icon property
     );
   }
-  
 
-  // TODO: Complete buildForecastArray method
-  // private buildForecastArray(currentWeather: Weather, weatherData: any[]) {}
-  private buildForecastArray(currentWeather: Weather, weatherData: WeatherData[]): WeatherData[] {
-    // Example implementation to build the forecast array
+  private buildForecastArray(currentWeather: Weather, weatherData: any[]): WeatherData[] {
     const forecastArray = weatherData.map(data => {
       return {
-        date: data.date,
-        temperature: data.temperature,
-        humidity: data.humidity,
-        description: data.description,
-        windSpeed: data.windSpeed,
+        date: data.dt_txt,
+        temperature: data.main.temp,
+        humidity: data.main.humidity,
+        description: data.weather[0].description,
+        windSpeed: data.wind.speed,
+        icon: data.weather[0].icon,
       };
     });
     forecastArray.unshift({
@@ -117,6 +125,7 @@ class WeatherService {
       humidity: currentWeather.humidity,
       description: currentWeather.description,
       windSpeed: currentWeather.windSpeed,
+      icon: currentWeather.icon,
     });
 
     return forecastArray;
@@ -126,7 +135,11 @@ class WeatherService {
     const coordinates = await this.fetchAndDestructureLocationData(cityName);
     const weatherData = await this.fetchWeatherData(coordinates);
     const currentWeather = this.parseCurrentWeather(weatherData.list[0]);
-    return this.buildForecastArray(currentWeather, weatherData.list);
+    const forecastArray = this.buildForecastArray(currentWeather, weatherData.list);
+    
+    // Include the city name in the current weather and forecast data
+    forecastArray.forEach(data => data.city = cityName);
+    return forecastArray;
   }
 }
 

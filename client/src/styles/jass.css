@@ -1156,6 +1156,7 @@ a:hover {
   border-radius: calc(0.18rem - 1px) calc(0.18rem - 1px) 0 0;
 }
 
+
 form {
   width: 100%;
 }
@@ -1915,4 +1916,11 @@ label form [type='radio'] {
   background: -webkit-linear-gradient(right, #20084a, #3463bc);
   background: -moz-linear-gradient(right, #20084a, #3463bc);
   background: linear-gradient(to left, #20084a, #3463bc);
+}
+
+.no-history-message {
+  text-align: center; /* Center the text */
+  margin: 0; /* Remove any default margin */
+  padding-left: 25px; /* Remove any default padding */
+  display: block; /* Ensure it is displayed as a block element */
 }

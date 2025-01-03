@@ -1,7 +1,7 @@
 // this file is the main entry point for the server app. It sets up the Express server, configures middleware, and connects the routes.
 
 import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' }); // Explicitly specify the path to the .env file
+dotenv.config();
 
 import express from 'express';
 import path from 'path';

@@ -77,10 +77,11 @@ const fetchSearchHistory = async () => {
     renderSearchHistory(searchHistory);
   } catch (error) {
     console.error('Error:', error);
+    renderSearchHistory([]);
   }
 };
 
-const deleteCityFromHistory = async (id: number) => {
+const deleteCityFromHistory = async (id: string) => {
   try {
     const response = await fetch(`/api/weather/history/${id}`, {
       method: 'DELETE',
@@ -106,21 +107,39 @@ Render Functions
 
 */
 
-const renderCurrentWeather = (currentWeather: any): void => {
-  const { city, date, icon, iconDescription, tempF, windSpeed, humidity } =
-    currentWeather;
+interface CurrentWeather {
+  city: string;
+  date: string;
+  icon: string;
+  iconDescription: string;
+  temperature: number;
+  windSpeed: number;
+  humidity: number;
+}
+const capitalizeFirstLetter = (string: string): string => {
+  return string.charAt(0).toUpperCase() + string.slice(1);
+};
 
-  // convert the following to typescript
-  heading.textContent = `${city} (${date})`;
-  weatherIcon.setAttribute(
-    'src',
-    `https://openweathermap.org/img/w/${icon}.png`
-  );
+const renderCurrentWeather = (currentWeather: CurrentWeather): void => {
+  const { city, date, icon, iconDescription, temperature, windSpeed, humidity } = currentWeather;
+
+  const capitalizedCity = capitalizeFirstLetter(city);
+  const windSpeedKPH = (windSpeed * 3.6).toFixed(2); // Convert m/s to KPH
+  // Get today's date
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  heading.textContent = `${capitalizedCity} (${formattedDate})`;
+  weatherIcon.setAttribute('src', `https://openweathermap.org/img/w/${icon}.png`);
   weatherIcon.setAttribute('alt', iconDescription);
   weatherIcon.setAttribute('class', 'weather-img');
-  heading.append(weatherIcon);
-  tempEl.textContent = `Temp: ${tempF}°F`;
-  windEl.textContent = `Wind: ${windSpeed} MPH`;
+  tempEl.textContent = `Temp: ${temperature}°C`;
+  windEl.textContent = `Wind: ${windSpeedKPH} km/h`;
   humidityEl.textContent = `Humidity: ${humidity} %`;
 
   if (todayContainer) {
@@ -129,7 +148,7 @@ const renderCurrentWeather = (currentWeather: any): void => {
   }
 };
 
-const renderForecast = (forecast: any): void => {
+const renderForecast = (forecast: any[]): void => {
   const headingCol = document.createElement('div');
   const heading = document.createElement('h4');
 
@@ -142,17 +161,22 @@ const renderForecast = (forecast: any): void => {
     forecastContainer.append(headingCol);
   }
 
-  for (let i = 0; i < forecast.length; i++) {
-    renderForecastCard(forecast[i]);
+  // Filter forecast to include only every fourth entry (12-hour increments)
+  const filteredForecast = forecast.filter((_, index) => index % 8 === 0);
+
+  for (let i = 0; i < filteredForecast.length; i++) {
+    renderForecastCard(filteredForecast[i]);
   }
 };
 
 const renderForecastCard = (forecast: any) => {
-  const { date, icon, iconDescription, tempF, windSpeed, humidity } = forecast;
+  const { date, icon, iconDescription, temperature, windSpeed, humidity } = forecast;
 
-  const { col, cardTitle, weatherIcon, tempEl, windEl, humidityEl } =
-    createForecastCard();
+  const { col, cardTitle, weatherIcon, tempEl, windEl, humidityEl } = createForecastCard();
 
+  // Convert wind speed from MPH to KPH
+  const windSpeedKPH = (windSpeed * 1.60934).toFixed(2);
+  
   // Add content to elements
   cardTitle.textContent = date;
   weatherIcon.setAttribute(
@@ -160,8 +184,8 @@ const renderForecastCard = (forecast: any) => {
     `https://openweathermap.org/img/w/${icon}.png`
   );
   weatherIcon.setAttribute('alt', iconDescription);
-  tempEl.textContent = `Temp: ${tempF} °F`;
-  windEl.textContent = `Wind: ${windSpeed} MPH`;
+  tempEl.textContent = `Temp: ${temperature} °C`;
+  windEl.textContent = `Wind: ${windSpeedKPH} KPH`;
   humidityEl.textContent = `Humidity: ${humidity} %`;
 
   if (forecastContainer) {
@@ -169,15 +193,21 @@ const renderForecastCard = (forecast: any) => {
   }
 };
 
-const renderSearchHistory = async (searchHistory: any) => {
-  const historyList = await searchHistory.json();
+const renderSearchHistory = (historyList: any[]) => {
+  if (!Array.isArray(historyList)) {
+    console.error('Invalid history list:', historyList);
+    return;
+  }
 
   if (searchHistoryContainer) {
     searchHistoryContainer.innerHTML = '';
 
     if (!historyList.length) {
-      searchHistoryContainer.innerHTML =
-        '<p class="text-center">No Previous Search History</p>';
+      const noHistoryMessage = document.createElement('h6');
+      noHistoryMessage.classList.add('no-history-message', 'text-center');
+      noHistoryMessage.textContent = 'No Previous Search History';
+      searchHistoryContainer.append(noHistoryMessage);
+      return;
     }
 
     // * Start at end of history array and count down to show the most recent cities at the top.
@@ -282,13 +312,24 @@ Event Handlers
 const handleSearchFormSubmit = (event: any): void => {
   event.preventDefault();
 
-  if (!searchInput.value) {
-    throw new Error('City cannot be blank');
+  const errorMessageEl = document.getElementById('error-message');
+  if (errorMessageEl) {
+    errorMessageEl.remove();
+  }
+
+  if (!searchInput.value.trim()) {
+    const errorMessage = document.createElement('p');
+    errorMessage.id = 'error-message';
+    errorMessage.textContent = 'City cannot be blank';
+    errorMessage.style.color = 'red';
+    searchForm.appendChild(errorMessage);
+    return;
   }
 
   const search: string = searchInput.value.trim();
   fetchWeather(search).then(() => {
     getAndRenderHistory();
+    searchInput.placeholder = search; // Update the placeholder with the searched city
   });
   searchInput.value = '';
 };
@@ -296,7 +337,10 @@ const handleSearchFormSubmit = (event: any): void => {
 const handleSearchHistoryClick = (event: any) => {
   if (event.target.matches('.history-btn')) {
     const city = event.target.textContent;
-    fetchWeather(city).then(getAndRenderHistory);
+    fetchWeather(city).then(() => {
+      getAndRenderHistory();
+      searchInput.placeholder = city; // Update the placeholder with the searched city
+    });
   }
 };
 
@@ -312,8 +356,9 @@ Initial Render
 
 */
 
-const getAndRenderHistory = () =>
-  fetchSearchHistory().then(renderSearchHistory);
+const getAndRenderHistory = () => {
+  fetchSearchHistory();
+};
 
 searchForm?.addEventListener('submit', handleSearchFormSubmit);
 searchHistoryContainer?.addEventListener('click', handleSearchHistoryClick);
